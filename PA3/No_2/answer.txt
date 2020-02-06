@@ -1,0 +1,67 @@
+(1)
+正确!
+输出 // 注释
+
+Test(int): this->buf @ 0x7fcc49c00350            //【int默认构造函数被调用第1次】这是语句 Test A = F(1); 在执行的过程中发生了自动类型转换，常量1被转换为 Test 类型，其地址是0x7fcc49c00350 
+Test(const Test&) called. this->buf @ 0x7fcc49c02740  //【拷贝构造函数被调用第1次】这是赋值语句Test b = a;执行过程中，变量b对a进行了拷贝构造；注意到，F的参数表中Test&& A接受参数时，由于参数传参是通过引用传值的，因此没有调用有io输出的构造
+Test(Test&&) called. this->buf @ 0x7fcc49c02740  //【移动构造函数被调用第1次】 return b; 过程中，b被转化成返回值，地址0x7fcc49c02740 
+~Test(): this->buf @ 0x0                         // return b; b被转化成返回值，变量b的生命周期结束遭到删除  
+Test(Test&&) called. this->buf @ 0x7fcc49c02740  //【移动构造函数被调用第1次】Test A = F(1); 返回值右值引用（地址0x7fcc49c02740）对A进行赋值，调用移动构造函数  
+~Test(): this->buf @ 0x0                         // 返回值右值引用在语句Test A = F(1);赋值完毕后遭到删除  
+~Test(): this->buf @ 0x7fcc49c00350              // return 0;后常量1自动类型转换产生的中间变量在Test A = F(1);语句执行完毕后生命周期结束遭到删除
+~Test(): this->buf @ 0x7fcc49c02740              // return 0;后变量Test类型的A遭到删除
+          
+因此，执行构造函数1次，复制构造函数1次，移动构造函数2次，其余都是0次
+
+(2)
+有潜在风险，但是没有编译错误。
+执行过程如下：
+
+chenweideMacBook-Air:No_2 chenwei$ ./problem             //程序运行，编译没有错误
+Test(): this->buf @ 0x7f8f87400350                       //Test A默认构造
+Test(const Test&) called. this->buf @ 0x7f8f87402740     //F中Test b = a;调用拷贝构造
+~Test(): this->buf @ 0x7f8f87402740                      // 【出错点：F返回被转化为右值的b，而b在F中传给返回值的时候发生局部析构，b被析构】
+Test(Test&&) called. this->buf @ 0x7f8f87402740          //【出错点：F将返回的转化为右值的b给A，调用移动构造函数，但是移动构造函数已被重载，调用了已被析构的变量，程序异常退出】
+~Test(): this->buf @ 0x7f8f87402740                      //【出错点：F返回被转化为右值的b，而b在F中传给返回值的时候发生局部析构，b被析构】
+problem(5542,0x7fffab699340) malloc: *** error for object 0x7f8f87402740: pointer being freed was not allocated
+*** set a breakpoint in malloc_error_break to debug
+Abort trap: 6
+
+总结：变量访问了一个被删除的变量，程序异常退出
+
+(3)
+有潜在风险，但是没有编译错误。
+执行过程如下：
+
+Test(): this->buf @ 0x7fecbbc00350                         // 默认构造函数调用 Test A；
+Test(const Test&) called. this->buf @ 0x7fecbbc02740       // Test b = a; 调用拷贝构造函数
+~Test(): this->buf @ 0x7fecbbc02740                        // 【出错点】 F函数返回一个对b的const Test&类型左值引用，通过语句return std::move(b);实现，但是在F中有局部析构现象，b被析构，此时返回值变成了一个指向已被删除的变量的引用，但是由于是引用到引用的传递，所以目前还没有导致错误，只是返回值返回是指向已被删除的变量的引用
+~Test(): this->buf @ 0x7fecbbc00350                        //  程序结束，A被析构。【出错点】const Test &A = F(std::move(a));这也是引用到引用的传递，因此const Test& A并没有调用移动或者拷贝构造函数，这句语句执行表面上没有问题，但是实际上此时A指向的是一个已被删除的变量，因此任何对A的成员的访问都将导致错误。
+
+总结：这个程序运行正常，没有出现任何错误，但事实上A已经是指向被删除变量的引用，有着巨大的潜在风险。
+
+(4)
+正确！  
+输出//注释   
+
+Test(int): this->buf @ 0x7fe10a400350                         //【int默认构造函数被调用第1次】这是语句 Test A = F(1);在执行的过程中发生了自动类型转换，常量1被转换为 Test 类型
+Test(const Test&) called. this->buf @ 0x7fe10a402740          //【拷贝构造函数被调用第1次】这是Test b = std::move(a); 语句执行过程中调用的拷贝构造函数（猜想std::move()无法改变a的const属性，因此它还是一个左值，故此是一个拷贝构造函数）
+Test(Test&&) called. this->buf @ 0x7fe10a402740               //【移动构造函数被调用第1次】return b;语句执行过程中，b被转化成返回值，通过引用传值
+~Test(): this->buf @ 0x0                                      //  变量b生命周期结束遭到销毁
+Test(Test&&) called. this->buf @ 0x7fe10a402740               //【移动构造函数被调用第2次】语句Test A = F(1);没有返回值优化的返回需要调用两次move构造函数
+~Test(): this->buf @ 0x0                                      //  Test A = F(1);语句执行完毕，F作用结束，const Test& a的生命周期结束遭到销毁
+~Test(): this->buf @ 0x7fe10a400350                           // return 0; 后程序结束，销毁F(1)自动类型转换的中间对象
+~Test(): this->buf @ 0x7fe10a402740                           // return 0;后程序结束，A生命周期结束遭到销毁
+因此，执行构造函数1次，复制构造函数1次，移动构造函数2次，其余都是0次
+
+(5)
+正确！
+输出//注释
+
+Test(): this->buf @ 0x7fecbd400350                        // 【默认构造函数被调用第1次】这是语句Test a;执行时被调用的
+Test(const Test&) called. this->buf @ 0x7fecbd402740      // 【拷贝构造函数被调用第1次】这是语句Test A = F(a);调用F(a)利用变量a向函数F(a)传参的过程中被调用的，原因是F的参数表为Test A
+Test(const Test&) called. this->buf @ 0x7fecbd402750      //【拷贝构造函数被调用第2次】 语句Test A = F(a);F返回值const Test类型的引用对A实例进行构造，调用拷贝构造函数。 （注意到返回常量Test类型的引用，而b是Test类型的引用，因此std::move(b)在转化成返回值的过程中并没有调用会有io输出的函数）;同时，std::move()亦不会进行io输出
+~Test(): this->buf @ 0x7fecbd402740                       // 语句Test A = F(a);执行完毕，F的作用域结束，内部的参量a生命周期结束遭到删除
+~Test(): this->buf @ 0x7fecbd402750                       // return 0;后，程序结束，A生命周期结束先遭到删除
+~Test(): this->buf @ 0x7fecbd400350                       // return 0;后，程序结束，a生命周期结束遭到删除
+因此，执行构造函数1次，复制构造函数2次，其余都是0次

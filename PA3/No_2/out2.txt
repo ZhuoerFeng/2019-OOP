@@ -1,0 +1,9 @@
+In main...
+Test(): this->buf @ 0x7faefc400350
+In F...
+Test(const Test&) called. this->buf @ 0x7faefc402740
+return...
+~Test(): this->buf @ 0x7faefc402740
+Test(Test&&) called. this->buf @ 0x7faefc402740
+Default: 1 Create: 0 Copy func: 1 Move func: 1 Copy assign: 0 Move assgin: 0 Del func: 1
+~Test(): this->buf @ 0x7faefc402740

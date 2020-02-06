@@ -1,0 +1,10 @@
+fuck0
+Test(): this->buf @ 0x7fb741400350
+fuck1
+fuck2
+Test(const Test&) called. this->buf @ 0x7fb741402740
+fuck3
+~Test(): this->buf @ 0x7fb741402740
+Test(Test&&) called. this->buf @ 0x7fb741402740
+fuck4
+~Test(): this->buf @ 0x7fb741402740
